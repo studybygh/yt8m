@@ -5,6 +5,9 @@ import time
 import matplotlib.pyplot as plt
 from custom_attention import PreUtil, MultiHeadAttention, EncoderLayer, DecoderLayer, Encoder, Decoder, Transformer
 
+gpus = tf.config.list_physical_devices(device_type='GPU')
+tf.config.set_visible_devices(devices=[], device_type='GPU')
+
 BUFFER_SIZE = 20000
 BATCH_SIZE = 64
 MAX_LENGTH = 40
@@ -49,11 +52,11 @@ def loss_function(real, pred):
 # 执行。该函数专用于参数张量的精确形状。为了避免由于可变序列长度或可变
 # 批次大小（最后一批次较小）导致的再追踪，使用 input_signature 指定
 # 更多的通用形状。
-@tf.function(input_signature=[tf.TensorSpec(shape=(None, None), dtype=tf.int64), tf.TensorSpec(shape=(None, None), dtype=tf.int64),])
+@tf.function()
 def train_step(inp, tar):
     tar_inp = tar[:, :-1]
     tar_real = tar[:, 1:]
-    enc_padding_mask, combined_mask, dec_padding_mask = PreUtil.create_masks(inp, tar_inp)
+    enc_padding_mask, combined_mask, dec_padding_mask = PreUtil().create_masks(inp, tar_inp)
 
     with tf.GradientTape() as tape:
         predictions, _ = transformer(inp, tar_inp,True,enc_padding_mask,combined_mask, dec_padding_mask)
@@ -65,7 +68,7 @@ def train_step(inp, tar):
     train_loss(loss)
     train_accuracy(tar_real, predictions)
 
-def evaluate(inp_sentence):
+def evaluate(transformer, inp_sentence):
     start_token = [tokenizer_pt.vocab_size]
     end_token = [tokenizer_pt.vocab_size + 1]
 
@@ -116,8 +119,8 @@ def plot_attention_weights(attention, sentence, result, layer):
     plt.tight_layout()
     plt.show()
 
-def translate(sentence, plot=''):
-    result, attention_weights = evaluate(sentence)
+def translate(transformer, sentence, plot=''):
+    result, attention_weights = evaluate(transformer, sentence)
     predicted_sentence = tokenizer_en.decode([i for i in result if i < tokenizer_en.vocab_size])
     print('Input: {}'.format(sentence))
     print('Predicted translation: {}'.format(predicted_sentence))
@@ -129,9 +132,9 @@ if __name__ == "__main__":
     examples, metadata = tfds.load('ted_hrlr_translate/pt_to_en', with_info=True, as_supervised=True)
     train_examples, val_examples = examples['train'], examples['validation']
 
-    tokenizer_en = tfds.features.text.SubwordTextEncoder.build_from_corpus(
+    tokenizer_en = tfds.deprecated.text.SubwordTextEncoder.build_from_corpus(
         (en.numpy() for pt, en in train_examples), target_vocab_size=2**13)
-    tokenizer_pt = tfds.features.text.SubwordTextEncoder.build_from_corpus(
+    tokenizer_pt = tfds.deprecated.text.SubwordTextEncoder.build_from_corpus(
         (pt.numpy() for pt, en in train_examples), target_vocab_size=2**13)
 
     sample_string = 'Transformer is awesome.'
@@ -157,83 +160,88 @@ if __name__ == "__main__":
     print(pt_batch, en_batch)
 
 
-    pos_encoding = PreUtil().positional_encoding(50, 512)
-    print (pos_encoding.shape)
-    plt.pcolormesh(pos_encoding[0], cmap='RdBu')
-    plt.xlabel('Depth')
-    plt.xlim((0, 512))
-    plt.ylabel('Position')
-    plt.colorbar()
-    plt.show()
+    # pos_encoding = PreUtil().positional_encoding(50, 512)
+    # print (pos_encoding.shape)
+    # plt.pcolormesh(pos_encoding[0], cmap='RdBu')
+    # plt.xlabel('Depth')
+    # plt.xlim((0, 512))
+    # plt.ylabel('Position')
+    # plt.colorbar()
+    # plt.show()
 
 
-    x = tf.constant([[7, 6, 0, 0, 1], [1, 2, 3, 0, 0], [0, 0, 0, 4, 5]])
-    print(PreUtil().create_padding_mask(x))
-    x = tf.constant([[7, 6, 0, 0, 1], [1, 2, 3, 0, 0], [0, 0, 0, 4, 5]])
-    print(PreUtil().create_padding_mask(x))
-    x = tf.random.uniform((1, 3))
-    temp = PreUtil().create_look_ahead_mask(x.shape[1])
-    print(temp)
+    # x = tf.constant([[7, 6, 0, 0, 1], [1, 2, 3, 0, 0], [0, 0, 0, 4, 5]])
+    # print('create_padding_mask:')
+    # print(PreUtil().create_padding_mask(x))
+    # x = tf.constant([[7, 6, 0, 0, 1], [1, 2, 3, 0, 0], [0, 0, 0, 4, 5]])
+    # print('create_padding_mask:')
+    # print(PreUtil().create_padding_mask(x))
+    # x = tf.random.uniform((1, 3))
+    # temp = PreUtil().create_look_ahead_mask(x.shape[1])
+    # print('create_look_ahead_mask:')
+    # print(temp)
 
 
-    np.set_printoptions(suppress=True)
-    temp_k = tf.constant([[10,0,0],
-                          [0,10,0],
-                          [0,0,10],
-                          [0,0,10]], dtype=tf.float32)  # (4, 3)
+    # np.set_printoptions(suppress=True)
+    # temp_k = tf.constant([[10,0,0],
+    #                       [0,10,0],
+    #                       [0,0,10],
+    #                       [0,0,10]], dtype=tf.float32)  # (4, 3)
 
-    temp_v = tf.constant([[   1,0],
-                          [  10,0],
-                          [ 100,5],
-                          [1000,6]], dtype=tf.float32)  # (4, 2)
-    # 这条 `请求（query）符合第二个`主键（key）`，因此返回了第二个`数值（value）`。
-    temp_q = tf.constant([[0, 10, 0]], dtype=tf.float32)  # (1, 3)
-    PreUtil().print_out(temp_q, temp_k, temp_v)
+    # temp_v = tf.constant([[   1,0],
+    #                       [  10,0],
+    #                       [ 100,5],
+    #                       [1000,6]], dtype=tf.float32)  # (4, 2)
+    # print('print_attn_out:')
+    # # 这条 `请求（query）符合第二个`主键（key）`，因此返回了第二个`数值（value）`。
+    # temp_q = tf.constant([[0, 10, 0]], dtype=tf.float32)  # (1, 3)
+    # PreUtil().print_attn_out(temp_q, temp_k, temp_v)
 
-    # 这条请求符合重复出现的主键（第三第四个），因此，对所有的相关数值取了平均。
-    temp_q = tf.constant([[0, 0, 10]], dtype=tf.float32)  # (1, 3)
-    PreUtil().print_out(temp_q, temp_k, temp_v)
+    # # 这条请求符合重复出现的主键（第三第四个），因此，对所有的相关数值取了平均。
+    # temp_q = tf.constant([[0, 0, 10]], dtype=tf.float32)  # (1, 3)
+    # PreUtil().print_attn_out(temp_q, temp_k, temp_v)
 
-    # 这条请求符合第一和第二条主键，因此，对它们的数值去了平均。
-    temp_q = tf.constant([[10, 10, 0]], dtype=tf.float32)  # (1, 3)
-    PreUtil().print_out(temp_q, temp_k, temp_v)
+    # # 这条请求符合第一和第二条主键，因此，对它们的数值去了平均。
+    # temp_q = tf.constant([[10, 10, 0]], dtype=tf.float32)  # (1, 3)
+    # PreUtil().print_attn_out(temp_q, temp_k, temp_v)
 
-    temp_q = tf.constant([[0, 0, 10], [0, 10, 0], [10, 10, 0]], dtype=tf.float32)  # (3, 3)
-    PreUtil().print_out(temp_q, temp_k, temp_v)
-
-
-    temp_mha = MultiHeadAttention(d_model=512, num_heads=8)
-    y = tf.random.uniform((1, 60, 512))  # (batch_size, encoder_sequence, d_model)
-    out, attn = temp_mha(y, k=y, q=y, mask=None)
-    print(out.shape)
-    print(attn.shape)
+    # temp_q = tf.constant([[0, 0, 10], [0, 10, 0], [10, 10, 0]], dtype=tf.float32)  # (3, 3)
+    # PreUtil().print_attn_out(temp_q, temp_k, temp_v)
 
 
-    sample_ffn = PreUtil().point_wise_feed_forward_network(512, 2048)
-    print(sample_ffn(tf.random.uniform((64, 50, 512))).shape)
+    # temp_mha = MultiHeadAttention(d_model=512, num_heads=8)
+    # y = tf.random.uniform((1, 60, 512))  # (batch_size, encoder_sequence, d_model)
+    # out, attn = temp_mha(y, k=y, q=y, mask=None)
+    # print('mah.out.shape = ' + str(out.shape))
+    # print('mah.attn.shape = ' + str(attn.shape))
 
 
-    sample_encoder_layer = EncoderLayer(512, 8, 2048)
-    sample_encoder_layer_output = sample_encoder_layer(tf.random.uniform((64, 43, 512)), False, None)
-    print(sample_encoder_layer_output.shape)  # (batch_size, input_seq_len, d_model)
-    sample_decoder_layer = DecoderLayer(512, 8, 2048)
-    sample_decoder_layer_output, _, _ = sample_decoder_layer(tf.random.uniform((64, 50, 512)), sample_encoder_layer_output, False, None, None)
-    print(sample_decoder_layer_output.shape)  # (batch_size, target_seq_len, d_model)
+    # sample_ffn = PreUtil().point_wise_feed_forward_network(512, 2048)
+    # print('sample_ffn.shape = ' + str(sample_ffn(tf.random.uniform((64, 50, 512))).shape))
 
 
-    sample_encoder = Encoder(num_layers=2, d_model=512, num_heads=8, dff=2048, input_vocab_size=8500, maximum_position_encoding=10000)
-    sample_encoder_output = sample_encoder(tf.random.uniform((64, 62)), training=False, mask=None)
-    print (sample_encoder_output.shape)  # (batch_size, input_seq_len, d_model)
-    sample_decoder = Decoder(num_layers=2, d_model=512, num_heads=8, dff=2048, target_vocab_size=8000, maximum_position_encoding=5000)
-    output, attn = sample_decoder(tf.random.uniform((64, 26)), enc_output=sample_encoder_output, training=False, look_ahead_mask=None, padding_mask=None)
-    print(output.shape, attn['decoder_layer2_block2'].shape)
+    # sample_encoder_layer = EncoderLayer(512, 8, 2048)
+    # sample_encoder_layer_output = sample_encoder_layer(tf.random.uniform((64, 43, 512)), False, None)
+    # print('sample_encoder_layer_output.shape = ' + str(sample_encoder_layer_output.shape))  # (batch_size, input_seq_len, d_model)
+    # sample_decoder_layer = DecoderLayer(512, 8, 2048)
+    # sample_decoder_layer_output, _, _ = sample_decoder_layer(tf.random.uniform((64, 50, 512)), sample_encoder_layer_output, False, None, None)
+    # print('sample_decoder_layer_output.shape = ' + str(sample_decoder_layer_output.shape))  # (batch_size, target_seq_len, d_model)
 
 
-    sample_transformer = Transformer(num_layers=2, d_model=512, num_heads=8, dff=2048,input_vocab_size=8500, target_vocab_size=8000,pe_input=10000, pe_target=6000)
-    temp_input = tf.random.uniform((64, 62))
-    temp_target = tf.random.uniform((64, 26))
-    fn_out, _ = sample_transformer(temp_input, temp_target, training=False,enc_padding_mask=None,look_ahead_mask=None,dec_padding_mask=None)
-    print(fn_out.shape)  # (batch_size, tar_seq_len, target_vocab_size)
+    # sample_encoder = Encoder(num_layers=2, d_model=512, num_heads=8, dff=2048, input_vocab_size=8500, maximum_position_encoding=10000)
+    # sample_encoder_output = sample_encoder(tf.random.uniform((64, 62)), training=False, mask=None)
+    # print('sample_encoder.shape = ' + str(sample_encoder_output.shape))  # (batch_size, input_seq_len, d_model)
+    # sample_decoder = Decoder(num_layers=2, d_model=512, num_heads=8, dff=2048, target_vocab_size=8000, maximum_position_encoding=5000)
+    # output, attn = sample_decoder(tf.random.uniform((64, 26)), enc_output=sample_encoder_output, training=False, look_ahead_mask=None, padding_mask=None)
+    # print('sample_decoder.output.shape = ' + str(output.shape))
+    # print('sample_decoder.attn.decoder_layer2_block2.shape = ' + str(attn['decoder_layer2_block2'].shape))
+
+
+    # sample_transformer = Transformer(num_layers=2, d_model=512, num_heads=8, dff=2048,input_vocab_size=8500, target_vocab_size=8000,pe_input=10000, pe_target=6000)
+    # temp_input = tf.random.uniform((64, 62))
+    # temp_target = tf.random.uniform((64, 26))
+    # fn_out, _ = sample_transformer(temp_input, temp_target, training=False,enc_padding_mask=None,look_ahead_mask=None,dec_padding_mask=None)
+    # print('fn_out.shape = ' + str(fn_out.shape))  # (batch_size, tar_seq_len, target_vocab_size)
 
 
     num_layers = 4
@@ -258,7 +266,7 @@ if __name__ == "__main__":
     transformer = Transformer(num_layers, d_model, num_heads, dff, input_vocab_size, target_vocab_size,
                 pe_input=input_vocab_size, pe_target=target_vocab_size, rate=dropout_rate)
     checkpoint_path = "./checkpoints/train"
-    ckpt = tf.train.Checkpoint(transformer=transformer,optimizer=optimizer)
+    ckpt = tf.train.Checkpoint(transformer=transformer, optimizer=optimizer)
     ckpt_manager = tf.train.CheckpointManager(ckpt, checkpoint_path, max_to_keep=5)
     # 如果检查点存在，则恢复最新的检查点。
     if ckpt_manager.latest_checkpoint:
@@ -271,25 +279,34 @@ if __name__ == "__main__":
         train_accuracy.reset_states()
         # inp -> portuguese, tar -> english
         for (batch, (inp, tar)) in enumerate(train_dataset):
-            train_step(inp, tar)
-            if batch % 50 == 0:
-                print ('Epoch {} Batch {} Loss {:.4f} Accuracy {:.4f}'.format(epoch + 1, batch, train_loss.result(), train_accuracy.result()))
+            # train_step(inp, tar)
+            tar_inp = tar[:, :-1]
+            tar_real = tar[:, 1:]
+            enc_padding_mask, combined_mask, dec_padding_mask = PreUtil().create_masks(inp, tar_inp)
+            with tf.GradientTape() as tape:
+                predictions, _ = transformer(inp, tar_inp,True,enc_padding_mask,combined_mask, dec_padding_mask)
+                loss = loss_function(tar_real, predictions)
+            gradients = tape.gradient(loss, transformer.trainable_variables)
+            optimizer.apply_gradients(zip(gradients, transformer.trainable_variables))
+            train_loss(loss)
+            train_accuracy(tar_real, predictions)
+            print ('Epoch {} Batch {} Loss {:.4f} Accuracy {:.4f}'.format(epoch + 1, batch, train_loss.result(), train_accuracy.result()))
         if (epoch + 1) % 5 == 0:
             ckpt_save_path = ckpt_manager.save()
             print ('Saving checkpoint for epoch {} at {}'.format(epoch+1, ckpt_save_path))
         print ('Epoch {} Loss {:.4f} Accuracy {:.4f}'.format(epoch + 1,train_loss.result(), train_accuracy.result()))
         print ('Time taken for 1 epoch: {} secs\n'.format(time.time() - start))
 
-    translate("este é um problema que temos que resolver.")
+    translate(transformer, "este é um problema que temos que resolver.")
     print ("Real translation: this is a problem we have to solve .")
 
-    translate("os meus vizinhos ouviram sobre esta ideia.")
+    translate(transformer, "os meus vizinhos ouviram sobre esta ideia.")
     print ("Real translation: and my neighboring homes heard about this idea .")
 
-    translate("vou então muito rapidamente partilhar convosco algumas histórias de algumas coisas mágicas que aconteceram.")
+    translate(transformer, "vou então muito rapidamente partilhar convosco algumas histórias de algumas coisas mágicas que aconteceram.")
     print ("Real translation: so i 'll just share with you some stories very quickly of some magical things that have happened .")
 
-    translate("este é o primeiro livro que eu fiz.", plot='decoder_layer4_block2')
+    translate(transformer, "este é o primeiro livro que eu fiz.", plot='decoder_layer4_block2')
     print ("Real translation: this is the first book i've ever done.")
 
 
